@@ -1,0 +1,12 @@
+# bitbox-api declares no MSRV and its CI tests only stable/beta, so a silent
+# toolchain drift could break the iOS cross-build with no warning, and the
+# compiler (and the folder rustup keeps it in) is part of what the library's
+# bytes depend on. So this names the exact release: 1.97.1 is the rustc the
+# pinned libbitboxffi-{ios,sim}.a were built with (both carry "rustc version
+# 1.97.1 (8bab26f4f 2026-07-14)"). Moving it is a deliberate change: rebuild,
+# retest on the device, re-pin.
+[toolchain]
+channel = "1.97.1"
+# The two Talia's build script makes (native/build-bitboxffi.sh), plus the
+# Intel simulator so a build for it does not fail on a missing target.
+targets = ["aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios"]

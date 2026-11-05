@@ -1,0 +1,108 @@
+namespace bitbox {
+  // One client per physical connection. The sink receives every 64-byte frame
+  // Rust wants sent to the device; the app feeds device frames back in.
+  u64 create_client(FrameSink sink, string? noise_config_json);
+
+  // A frame that arrived from the device (already reassembled to 64 bytes).
+  // Never blocks; safe to call from the BLE notification thread.
+  void feed_frame(u64 handle, sequence<u8> frame);
+
+  // First contact with the device (the protocol-info query). Separate from
+  // create_client ON PURPOSE: creation must return the handle before any
+  // I/O, or the response frame has nowhere to be routed and both sides wait
+  // on each other.
+  [Throws=BitBoxError]
+  void open(u64 handle);
+
+  // Unlock the device and start the Noise handshake. Returns the pairing
+  // code to show on screen, or null when this app is already paired with
+  // this device (then confirm_pairing still completes the transition).
+  [Throws=BitBoxError]
+  string? unlock_and_pair(u64 handle);
+
+  // Blocks until the user confirms the code on the DEVICE, then completes
+  // the transition to a paired client.
+  [Throws=BitBoxError]
+  void confirm_pairing(u64 handle);
+
+  // The noise config after pairing: the app persists this in the Keychain
+  // and passes it back to create_client next time, which is what makes the
+  // next pairing codeless.
+  [Throws=BitBoxError]
+  string noise_config_json(u64 handle);
+
+  [Throws=BitBoxError]
+  DeviceInfo device_info(u64 handle);
+
+  // Master fingerprint, 8 lowercase hex chars.
+  [Throws=BitBoxError]
+  string root_fingerprint(u64 handle);
+
+  // xpub at a keypath like "m/48'/0'/0'/2'", in the requested format.
+  [Throws=BitBoxError]
+  string xpub(u64 handle, string keypath, XPubType xpub_type, boolean display);
+
+  // Is this wallet policy already registered on the device?
+  [Throws=BitBoxError]
+  boolean is_policy_registered(u64 handle, boolean testnet, string policy, sequence<PolicyKey> keys, string keypath_account);
+
+  // Register a BIP-388-style wallet policy on the device (kept device-side,
+  // confirmed on its screen). `name` is what the device displays for it.
+  [Throws=BitBoxError]
+  void register_policy(u64 handle, boolean testnet, string policy, sequence<PolicyKey> keys, string keypath_account, string name);
+
+  // Derive an address under a registered policy; display=true shows it on
+  // the device for the user to compare.
+  [Throws=BitBoxError]
+  string policy_address(u64 handle, boolean testnet, string policy, sequence<PolicyKey> keys, string keypath, boolean display);
+
+  // Sign a PSBT. For a policy vault the policy MUST come along
+  // (force_script_config); for plain single-sig pass null policy and the
+  // device infers its inputs from the PSBT's own key origins. Returns the
+  // signed PSBT, base64. The device does NOT finalize; the app's
+  // completePsbt stays in charge of that.
+  [Throws=BitBoxError]
+  string sign_psbt(u64 handle, boolean testnet, string psbt_b64, string? policy, sequence<PolicyKey> keys, string? keypath_account);
+
+  // Drop everything held for this handle. Idempotent.
+  void close(u64 handle);
+};
+
+callback interface FrameSink {
+  // Called with each frame to transmit. Return quickly: the protocol thread
+  // is blocked until this returns. Queue the write and get out.
+  void send(sequence<u8> frame);
+};
+
+dictionary DeviceInfo {
+  string name;
+  string version;
+  boolean initialized;
+  boolean mnemonic_passphrase_enabled;
+};
+
+enum XPubType {
+  "Tpub",
+  "Xpub",
+  "Zpub",
+  "Vpub",
+};
+
+[Error]
+interface BitBoxError {
+  // The device or the link said no; `message` is already plain language.
+  Device(string message);
+  // The handle is unknown or in the wrong state for this call.
+  State(string message);
+};
+
+// ---- Registration, address check, signing ------------------------------
+
+dictionary PolicyKey {
+  // 8 hex chars, or null for a key with no origin (a provider xpub).
+  string? root_fingerprint_hex;
+  // Account derivation like "m/48'/1'/0'/2'", or null when unknown.
+  string? keypath;
+  // Plain base58 xpub/tpub. SLIP-132 prefixes must be normalized upstream.
+  string xpub;
+};

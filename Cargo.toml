@@ -1,0 +1,62 @@
+[package]
+name = "bitbox-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Talia's uniffi bridge to bitbox-api: BitBox02 Nova over a BLE transport the app supplies"
+readme = "README.md"
+# Built only into the Talia app, never released on crates.io.
+publish = false
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "bitboxffi"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[features]
+default = ["uniffi/cli"]
+
+[dependencies]
+# 0.13.0 is the newest published release. The build takes it from
+# vendor/bitbox-api instead (see [patch.crates-io] below and vendor/README.md).
+# `multithreaded` makes ReadWrite/NoiseConfig Send+Sync, which the handle
+# registry needs. No usb/wasm/simulator: the app IS the transport.
+bitbox-api = { version = "0.13.0", default-features = false, features = ["multithreaded"] }
+# The whole client runs under block_on on the caller's thread; DefaultRuntime
+# sleeps with std::thread::sleep, which its own docs pair with exactly this.
+futures = "0.3"
+# The SAME major as bitbox-api's, so our Psbt IS the type its signer takes.
+bitcoin = { version = "0.32", features = ["base64"] }
+# Must match the version/attribute bitbox-api applied to ReadWrite, or the
+# lifetimes desugar differently and the impl does not match the trait.
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+thiserror = "1"
+# uniffi 0.23 is enough: every exported call is sync, so nothing here needs
+# the async support of newer uniffi. The bdk-ffi fork pins its own, newer one.
+uniffi = { version = "0.23.0" }
+
+[build-dependencies]
+uniffi = { version = "0.23.0", features = ["build"] }
+
+[patch.crates-io]
+# bitbox-api 0.13.0 exactly as crates.io published it (the .crate's SHA-256 is
+# d6fbc54fa856e199b598cea738c9eeb2d8a3c891617e3bef3a970c2374c29baf, the
+# checksum this Cargo.lock pinned before), plus only the patches in
+# vendor/patches. vendor/verify-bitbox-api.sh re-derives the folder from those
+# two and fails on any difference. Drop this section and the vendor folder
+# once a crates.io release carries every patch (see "When to drop this" in
+# vendor/README.md).
+bitbox-api = { path = "vendor/bitbox-api" }
+
+[profile.release]
+# Panics must unwind into catchable uniffi errors, never abort the app --
+# the same reasoning as the bdk fork's profile.
+panic = "unwind"
+opt-level = "z"
+lto = true

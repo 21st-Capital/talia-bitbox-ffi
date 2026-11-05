@@ -1,0 +1,6 @@
+talia-bitbox-ffi
+Copyright 2026 Twenty First Capital Cyber Security Consultancy L.L.C
+(21st Capital)
+
+This product vendors bitbox-api (Copyright Shift Crypto AG, Apache-2.0) in
+vendor/bitbox-api, which keeps its own licence file.

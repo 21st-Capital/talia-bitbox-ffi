@@ -1,0 +1,134 @@
+[package]
+name = "bitbox-api"
+authors = ["Marko Bencun <benma@bitbox.swiss>"]
+version = "0.13.0"
+homepage = "https://bitbox.swiss/"
+repository = "https://github.com/BitBoxSwiss/bitbox-api-rs/"
+readme = "README-rust.md"
+edition = "2021"
+license = "Apache-2.0"
+description = "A library to interact with BitBox hardware wallets"
+keywords = ["bitbox", "api", "bitcoin", "wasm"]
+categories = ["api-bindings", "cryptography"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+async-trait = "0.1.68"
+base32 = "0.5"
+bitcoin = { version = "0.32", features = ["base64"] }
+byteorder = "1.3.2"
+getrandom = { version = "0.2" }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+hex = { version = "0.4" }
+noise-protocol = "0.2"
+noise-rust-crypto = "0.6"
+num-bigint = "0.4"
+# If you change this, also change the version of prost-build in scripts/build-protos.rs
+# and run `make build-protos`.
+prost = "0.14"
+semver = "1.0.17"
+serde_json = { version = "1.0" }
+thiserror = "2.0"
+zeroize = "1"
+
+chrono = { version = "0.4.38", default-features = false, features = ["clock"] }
+enum-assoc = { version = "1.1.0", optional = true }
+hidapi = { version = "2.3", optional = true }
+js-sys = { version = "=0.3.69", optional = true }
+rlp = { version = "0.6", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = { version = "0.6.5", optional = true }
+tokio = { version = "1", optional = true, features = ["time"] }
+wasm-bindgen = { version = "=0.2.92", optional = true }
+wasm-bindgen-futures = { version = "=0.4.42", optional = true }
+web-sys = { version = "=0.3.69", features = ["Storage", "Window"], optional = true }
+
+[dev-dependencies]
+async-trait = "0.1.68"
+futures-channel = "0.3"
+wasm-bindgen-test = "=0.3.42"
+tokio = { version = "1", features = ["time", "macros", "rt", "fs"] }
+reqwest = "0.12"
+url = "2.5"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+rlp = "0.6"
+# Enable this to be able to get coverage using `cargo tarpaulin --features=simulator,tokio --out=Html` without compilation error.
+# See https://github.com/rust-bitcoin/rust-bitcoinconsensus/pull/94
+# bitcoinconsensus = { git = "https://github.com/rust-bitcoin/rust-bitcoinconsensus.git", rev = "788ce4d210f7fe6fae4414f5be80968216ba0fd8", default-features = false }
+bitcoinconsensus = { version = "0.106.0", default-features = false }
+miniscript = "13.0.0"
+
+[build-dependencies]
+prost-build = { version = "0.14" }
+
+[[example]]
+name = "singlethreaded"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "multithreaded"
+required-features = ["usb", "tokio/rt", "tokio/macros", "tokio/rt-multi-thread", "multithreaded"]
+
+[[example]]
+name = "btc_signtx"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "btc_sign_psbt"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "btc_sign_op_return"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "btc_sign_msg"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "btc_miniscript"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "eth"
+required-features = ["usb", "tokio/rt", "tokio/macros", "rlp"]
+
+[[example]]
+name = "cardano"
+required-features = ["usb", "tokio/rt", "tokio/macros"]
+
+[[example]]
+name = "simulator"
+required-features = ["simulator", "tokio/rt", "tokio/macros", "tokio/rt-multi-thread", "multithreaded"]
+
+[profile.release]
+# Reduce wasm binary size.
+opt-level = 'z'
+codegen-units = 1
+lto = true
+
+[features]
+# Implement Sync+Send for PairedBitBox and PairingBitBox.
+# This may or may not cause trouble on macOS, see: https://github.com/libusb/hidapi/issues/503
+multithreaded = []
+usb = ["dep:hidapi"]
+simulator = []
+wasm = [
+  "dep:enum-assoc",
+  "dep:js-sys",
+  "dep:serde-wasm-bindgen",
+  "dep:wasm-bindgen",
+  "dep:wasm-bindgen-futures",
+  "dep:web-sys",
+
+  "getrandom/js",
+
+  "hex/serde",
+  "bitcoin/serde",
+
+  # Reduces the secp256k1 precompute table to decrease the WASM binary
+  # size significantly.
+  "bitcoin/secp-lowmemory",
+]

@@ -1,0 +1,17 @@
+# The iOS version every native object in libbitboxffi is built for (decided
+# 2026-10-07). Without it, cc stamps the C code
+# (secp256k1) with the installed Xcode SDK's version as its minimum iOS
+# (27.0 on Xcode 27, 26.5 in the pinned library), so the objects claim a
+# newer iOS than the app supports (Talia targets 15.1) and their bytes move
+# with every Xcode update. 15.0 is the floor BitBoxFFI.podspec uses, the
+# same value as the bdk-ffi fork's .cargo/config.toml. `force` so a shell
+# variable cannot change it. Talia's native/build-bitboxffi.sh runs cargo
+# inside this checkout, so cargo reads this file and passes the value to
+# rustc and to the C build alike.
+#
+# This does NOT make the build independent of Xcode: the C code is still
+# compiled by the installed Xcode's own clang, and every C object still
+# records that SDK's version (sdk 27.0), so the Xcode version stays part of
+# what the library's bytes depend on (the build script prints it).
+[env]
+IPHONEOS_DEPLOYMENT_TARGET = { value = "15.0", force = true }
