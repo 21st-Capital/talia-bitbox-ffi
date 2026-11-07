@@ -14,8 +14,9 @@ and the iOS simulator.
 
 The repository is published as a fresh copy of a reviewed commit of 21st
 Capital's private repository: its files are exactly that commit's, without
-the version history. When Talia ships an App Store release, a script exports
-the reviewed commit, scans it and adds it here as one new commit.
+the version history. Each change is reviewed there and copied here as one new
+commit before Talia builds the library from it, so the library the app links
+is always built from a commit of this repository's `main`.
 
 Issues are welcome. Pull requests from outside 21st Capital are not accepted
 for now: a change is made in the private repository and arrives here with the
@@ -115,14 +116,20 @@ secrets.
 
     cargo build --locked --release --target aarch64-apple-ios
     cargo build --locked --release --target aarch64-apple-ios-sim
-    cargo run --locked --release --bin uniffi-bindgen -- \
-      generate src/bitbox.udl --language swift --out-dir generated
+    cargo run --locked --release --features uniffi/cli --bin uniffi-bindgen -- \
+      generate src/bitbox.udl --language swift --out-dir generated --no-format
 
 This writes `target/aarch64-apple-ios/release/libbitboxffi.a`,
 `target/aarch64-apple-ios-sim/release/libbitboxffi.a`,
 `generated/bitbox.swift`, `generated/bitboxFFI.h` and
 `generated/bitboxFFI.modulemap`. The app takes the two libraries,
 `bitbox.swift` and `bitboxFFI.h`.
+
+The `uniffi-bindgen` tool is built only with uniffi's `cli` feature
+(`required-features` in `Cargo.toml`), so the bindings generator and its
+dependencies stay out of the static library. The `bindgen-cli` feature is
+never enabled by a build; it only keeps the tool's dependencies in
+`Cargo.lock`.
 
 `cargo test --locked` runs the unit tests in `src/lib.rs` on the build
 machine.
@@ -136,8 +143,19 @@ the commit. The script:
 
 - runs cargo under `env -i` with only `HOME`, `PATH`, `USER`, `LOGNAME`,
   `SHELL`, `TMPDIR`, `LANG`, `TERM`, `SSH_AUTH_SOCK`, `LC_*` and the proxy
-  variables, so no `RUSTFLAGS`, `CARGO_*`, `CC` or `CFLAGS` reaches the build;
-- uses `target` inside the checkout as the target folder;
+  variables, so nothing else in the shell (`RUSTFLAGS`, `CARGO_*`, `CC`,
+  `CFLAGS`, ...) reaches the build;
+- adds two variables of its own, which replace the Cargo home
+  (`$HOME/.cargo`) with `/cargo` and the checkout's physical path
+  (`pwd -P`) with `/talia-bitbox-ffi` in every path written into the
+  library: `CARGO_ENCODED_RUSTFLAGS` holds those two as
+  `--remap-path-prefix` flags for rustc (panic locations), separated by the
+  byte 0x1f, and `CFLAGS` holds them as `-ffile-prefix-map` flags for clang,
+  with a third that replaces the Xcode folder (`xcode-select -p`) with
+  `/xcode` (the secp256k1 objects carry no paths today; the flags keep it
+  that way). A folder reached through a link is mapped by its physical
+  path as well;
+- uses `target` inside the checkout's physical path as the target folder;
 - runs the three commands above, each with `--target-dir <checkout>/target`.
 
 To compare a build of your own:
@@ -145,33 +163,39 @@ To compare a build of your own:
 1. Check out the commit and note its tree hash, `git rev-parse 'HEAD^{tree}'`,
    which depends only on the files, not on the commit's history.
 2. Run `vendor/verify-bitbox-api.sh`.
-3. Build as above, in the same reduced environment, for example
-   `env -i HOME="$HOME" PATH="$PATH" cargo build --locked --target-dir "$PWD/target" --release --target aarch64-apple-ios`.
+3. Build as above, in the same reduced environment and with the same two
+   variables, for example, inside the checkout:
+
+       cd "$(pwd -P)"
+       env -i HOME="$HOME" PATH="$PATH" \
+         CARGO_ENCODED_RUSTFLAGS="$(printf -- '--remap-path-prefix=%s=/cargo\037--remap-path-prefix=%s=/talia-bitbox-ffi' "$HOME/.cargo" "$PWD")" \
+         CFLAGS="-ffile-prefix-map=$HOME/.cargo=/cargo -ffile-prefix-map=$PWD=/talia-bitbox-ffi -ffile-prefix-map=$(xcode-select -p)=/xcode" \
+         cargo build --locked --target-dir "$PWD/target" --release --target aarch64-apple-ios
+
+   The first line makes `$PWD` the physical path, so the target folder and
+   the map name the same folder. The paths must hold no spaces and no `=`.
+
 4. Run `shasum -a 256` on both `libbitboxffi.a` files and compare with the
    `# built bitboxffi` lines.
 
-Two builds of the same commit, at the same path, with the same Rust and the
-same Xcode, give identical bytes. The digests match the app's record only
-when all of these are the same as for the recorded build:
+Where the checkout sits, which home folder builds it and where Xcode is
+installed do not change the bytes (decided 2026-11-06): the two variables
+replace those paths with fixed names, and the bindings generator, which
+compiled the path of the cargo program into the library, is no longer part
+of it. The digests match the app's record when these are the same as for the
+recorded build:
 
 - the commit, with its `Cargo.lock`;
-- rustc 1.97.1, installed by rustup in the same folder;
-- the Xcode, because of its clang and iOS SDK;
-- the absolute path of the checkout: the uniffi scaffolding is included from
-  the build's `OUT_DIR`, and that absolute path is compiled into panic
-  locations;
-- the absolute path of `CARGO_HOME`, because the source folder of every
-  dependency in the cargo registry is compiled into panic locations too.
+- rustc 1.97.1;
+- the Xcode version, because of its clang and iOS SDK;
+- the two variables, with exactly the names above;
+- the target folder: `target` in the checkout, as above, because the path
+  of the uniffi scaffolding under it is compiled in (as
+  `/talia-bitbox-ffi/target/...`).
 
-A build at another path, or with another Xcode, gives other bytes from the
-same source. For example, a rebuild of the same commit at another checkout
-path, with a newer Xcode and the same `CARGO_HOME`, changed only the crate's
-own two objects that carry the checkout path, the archive's symbol table, and
-one byte (the SDK version) in each of the four secp256k1 objects; every other
-member of the archive stayed byte-identical. Making the bytes independent of
-the paths (remapping the path prefixes, and keeping the uniffi bindgen code
-that the default `uniffi/cli` feature compiles in out of the library) changes
-the library, so it is left for a change of its own.
+With another Xcode, the four secp256k1 objects record another SDK version and
+so differ from the recorded ones; the archive's other members do not depend
+on Xcode.
 
 ## Security
 

@@ -15,9 +15,21 @@ name = "bitboxffi"
 [[bin]]
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"
+# Built only when asked for with its feature (`cargo run --features uniffi/cli
+# --bin uniffi-bindgen`), so the bindings generator and its dependencies
+# (clap, cargo_metadata and others) stay out of the static library, as in the
+# bdk-ffi fork (decided 2026-11-06). As a default feature it compiled the
+# cargo program's absolute path into the library, which tied the library's
+# bytes to the home folder it was built under.
+required-features = ["uniffi/cli"]
 
 [features]
-default = ["uniffi/cli"]
+# uniffi's "cli" feature, for the uniffi-bindgen binary alone (its
+# required-features name the dependency feature itself). This crate feature is
+# never enabled by a build; it only keeps the tool's dependencies in
+# Cargo.lock, which cargo resolves with every feature of the package, so
+# `cargo run --locked --features uniffi/cli ...` works.
+bindgen-cli = ["uniffi/cli"]
 
 [dependencies]
 # 0.13.0 is the newest published release. The build takes it from
